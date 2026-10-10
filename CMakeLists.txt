@@ -19,6 +19,15 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 
+include(FetchContent)
+
+FetchContent_Declare(
+    fmt
+    GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+    GIT_TAG v7.0.3
+    GIT_SHALLOW TRUE
+)
+
 # We only use FTXUI as a dependency, not its examples/tests/docs.
 set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -28,7 +37,8 @@ FetchContent_MakeAvailable(ftxui)
 
 function(add_snake_step target source)
     add_executable(${target} ${source})
-    target_link_libraries(${target} PRIVATE ftxui::ftxui)
+    find_package(fmt CONFIG REQUIRED)
+    target_link_libraries(${target} PRIVATE ftxui::ftxui fmt::fmt-header-only)
     target_include_directories(${target} PRIVATE ${PROJECT_SOURCE_DIR}/inc)
     target_compile_features(${target} PRIVATE cxx_std_26)
 
@@ -36,6 +46,7 @@ function(add_snake_step target source)
         target_compile_options(${target} PRIVATE /W4 /permissive-)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+
     endif()
 endfunction()
 

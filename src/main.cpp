@@ -1,8 +1,10 @@
+#include "bot.hpp"
 #include "game.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <fmt/format.h>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/ftxui.hpp>
 #include <ftxui/screen/string.hpp>
@@ -92,7 +94,11 @@ int main() {
     auto             screen = ftxui::ScreenInteractive::TerminalOutput();
     std::atomic_bool running{true};
     bool             paused{true};
-    bool             mode{false};
+    bool             mode{true};
+    using SnakeRef = std::reference_wrapper<snake::Snake>;
+    std::optional<SnakeRef> snake1{game.add_snake()};
+    std::string             debugText{"Init"};
+    std::optional<SnakeRef> snake2{};
 
     auto renderer = ftxui::Renderer([&]() {
         auto board = make_board(game);
@@ -113,7 +119,12 @@ int main() {
                  ftxui::text(std::to_string(game.game_speed())),
                  ftxui::text(" speed[%]")})
                 | ftxui::dim | ftxui::center,
-              ftxui::text("spacebar = pause/start") | ftxui::dim | ftxui::center,
+              ftxui::hbox(
+                ftxui::text("spacebar = pause/start "),
+                ftxui::text(std::to_string(paused)))
+                | ftxui::dim | ftxui::center,
+              ftxui::text(debugText) | ftxui::dim | ftxui::center,
+
             });
         }
 
@@ -166,6 +177,7 @@ int main() {
         }
         if(event == ftxui::Event::Character('R') || event == ftxui::Event::Character('r')) {
             game.reset();
+            paused = true;
             return true;
         }
         if(event == ftxui::Event::PageUp) {
@@ -183,9 +195,14 @@ int main() {
         if(event == ftxui::Event::Character('M') || event == ftxui::Event::Character('m')) {
             mode = !mode;
             if(mode) {
-                game.set_player_count(1);
+                if(snake1.has_value()) { debugText = "Player 1"; }
+                if(snake2.has_value()) { game.remove_snake(snake2->get()); }
             } else {
-                game.set_player_count(2);
+                snake2    = game.add_snake();
+                debugText = "Player 2";
+                game.init_snake(snake2.value());
+                //snake1 = game.add_snake();
+                //snake2 = game.add_snake();
             }
             paused = true;
 
@@ -198,6 +215,8 @@ int main() {
         }
         return false;
     });
+
+    game.reset();   //first init to get snake
 
     std::jthread ticker([&](std::stop_token stop_token) {
         while(!stop_token.stop_requested() && running.load()) {

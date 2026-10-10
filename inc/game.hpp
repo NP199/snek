@@ -4,7 +4,9 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <fmt/format.h>
 #include <iostream>
+#include <optional>
 #include <random>
 #include <ranges>
 
@@ -31,6 +33,7 @@ struct Snake {
     Direction             next_direction{Direction::right};
     int                   score{};
     bool                  alive{true};
+    int                   id{0};
 };
 
 namespace Symbols {
@@ -45,8 +48,9 @@ namespace Symbols {
 struct Game {
     std::size_t        width_;
     std::size_t        height_;
-    std::size_t        player_count_{1};
-    std::vector<Snake> snakes_{player_count_};
+    std::size_t        max_player_count_{2};
+    std::size_t        player_count_{0};
+    std::vector<Snake> snakes_{};
 
     Position food_{};
 
@@ -61,16 +65,45 @@ struct Game {
       : width_{width}
       , height_{height}
       , random_engine_(std::random_device{}()) {
-        reset();
+        snakes_.reserve(max_player_count_);
     }
 
+    /* reset -> snakes werden anahnd des vorher festgegten player_count_ initialisert
+     * init() soll neue schalgnen anhand des max_player_count_ erlauben.
+     * Es macht kein Sinn erst alle Schalngen zu initialiseiren und dann zu schauen welche
+     * gebraucht werden.
+     *
+     * Es ergibt nur Sinn aufrufen zu lassen, dass man eine Schlange initialiseren möchte.
+     * Jeder Spieler, fragt das Spiel über init_snake nach einer neuen Schlange und diese wird
+     * anhand eienr ID in den vector gepackt.
+     * Das Spiel schaut bei reset wie viele Schlangen es gibt und baut das Feld.
+     * In Init soll immer die Position neu bestimmt werden keine neuen schlangen angeelgt.
+     * Es muss eine Add player funtkino geben, die speicheradresse auf eine schlange returned.
+     */
+
     void reset() {
-        snakes_.assign(player_count_, Snake{});
+        //snakes_.assign(player_count_, Snake{});
         for(auto& snake : snakes_) { init_snake(snake); }
         game_over_ = false;
         speed_     = slowest_speed_;
         place_food();
     };
+
+    using SnakeRef = std::reference_wrapper<Snake>;
+    std::optional<SnakeRef> add_snake() {
+        if(snakes_.size() >= max_player_count_) { return std::nullopt; }
+        auto const& ref = std::ref(snakes_.emplace_back());
+        return ref;
+    }
+
+    bool remove_snake(Snake const& snake) {
+        auto it = std::ranges::find_if(snakes_, [&snake](Snake const& s) { return &s == &snake; });
+
+        if(it == snakes_.end()) { return false; }
+
+        snakes_.erase(it);
+        return true;
+    }
 
     void detect_collision();
 
@@ -90,79 +123,110 @@ struct Game {
     };
 
     void set_direction(Direction direction) { set_direction(0, direction); }
+
     void update() {
         if(game_over_ || snakes_.empty()) { return; }
 
-        auto& snake = snakes_[0];
+        auto const count = snakes_.size();
 
-        if(!snake.alive || snake.body.empty()) { return; }
+        std::vector<Position> next_positions(count);
+        std::vector<bool>     will_move(count, false);
+        std::vector<bool>     will_eat(count, false);
+        std::vector<bool>     survives(count, false);
 
-        snake.direction = snake.next_direction;
+        // 1. Bewegungen vorberechnen
+        for(std::size_t i = 0; i < count; ++i) {
+            auto& snake = snakes_.at(i);
 
-        Position next = snake.body.front();
+            if(!snake.alive || snake.body.empty()) { continue; }
 
-        switch(snake.direction) {
-        case Direction::up: --next.y; break;
+            snake.direction = snake.next_direction;
 
-        case Direction::down: ++next.y; break;
+            Position next = snake.body.front();
 
-        case Direction::left: --next.x; break;
+            switch(snake.direction) {
+            case Direction::up: --next.y; break;
+            case Direction::down: ++next.y; break;
+            case Direction::left: --next.x; break;
+            case Direction::right: ++next.x; break;
+            }
 
-        case Direction::right: ++next.x; break;
+            next_positions[i] = next;
+            will_move[i]      = true;
+            will_eat[i]       = next == food_;
+            survives[i]       = true;
         }
 
-        if(hits_wall(next) || hits_body(next, 0)) {
-            snake.alive = false;
-            game_over_  = true;
-            return;
+        // 2. Kollisionen bestimmen
+        // Wiederholen, bis keine weiteren Schlangen sterben.
+        // Dadurch wird kein Schwanz einer gestorbenen
+        // Schlange fälschlich als frei betrachtet.
+        bool changed;
+
+        do {
+            changed = false;
+
+            for(std::size_t i = 0; i < count; ++i) {
+                if(!survives[i]) { continue; }
+
+                auto const next = next_positions[i];
+
+                if(hits_wall(next) || hits_body(next, will_move, will_eat)) {
+                    survives[i]  = false;
+                    will_move[i] = false;
+                    changed      = true;
+                }
+            }
+
+            // Kopf-an-Kopf-Kollisionen
+            for(std::size_t i = 0; i < count; ++i) {
+                for(std::size_t j = i + 1; j < count; ++j) {
+                    if(!survives[i] || !survives[j]) { continue; }
+
+                    if(next_positions[i] == next_positions[j]) {
+                        survives[i]  = false;
+                        survives[j]  = false;
+                        will_move[i] = false;
+                        will_move[j] = false;
+                        changed      = true;
+                    }
+                }
+            }
+        } while(changed);
+
+        // 3. Bewegungen ausführen
+        bool food_eaten = false;
+
+        for(std::size_t i = 0; i < count; ++i) {
+            auto& snake = snakes_[i];
+
+            if(!snake.alive || snake.body.empty()) { continue; }
+
+            if(!survives[i]) {
+                snake.alive = false;
+                continue;
+            }
+
+            snake.body.insert(snake.body.begin(), next_positions[i]);
+
+            if(will_eat[i]) {
+                ++snake.score;
+                food_eaten = true;
+            } else {
+                snake.body.pop_back();
+            }
         }
 
-        snake.body.insert(snake.body.begin(), next);
-
-        if(next == food_) {
-            ++snake.score;
-
+        // 4. Futter und Geschwindigkeit
+        if(food_eaten) {
             place_food();
             increase_game_speed();
-        } else {
-            snake.body.pop_back();
-        }
-    }
-
-    void update_old() {
-        if(game_over_) { return; }
-
-        auto& snake = snakes_.at(0);
-
-        snake.direction = snake.next_direction;
-
-        Position next = snake.body.front();
-
-        switch(snake.direction) {
-        case Direction::up: --next.y; break;
-
-        case Direction::down: ++next.y; break;
-
-        case Direction::left: --next.x; break;
-
-        case Direction::right: ++next.x; break;
         }
 
-        if(hits_wall(next) || occupied(next)) {
-            game_over_  = true;
-            snake.alive = false;
-            return;
-        }
-
-        snake.body.insert(snake.body.begin(), next);
-
-        if(next == food_) {
-            ++snake.score;
-            place_food();
-            increase_game_speed();
-        } else {
-            snake.body.pop_back();
-        }
+        // 5. Spielende
+        game_over_ = std::ranges::none_of(snakes_, [](Snake const& snake) {
+            return snake.alive && !snake.body.empty();
+        });
     }
 
     std::vector<Position> const& body(std::size_t player) const { return snakes_.at(player).body; }
@@ -191,9 +255,13 @@ struct Game {
     bool hits_wall(Position pos) const { return pos.x >= width_ || pos.y >= height_; }
 
     bool hits_body(Position pos) { return occupied(pos); }
-    bool hits_body(Position pos, std::size_t moving_player) const {
+
+    bool hits_body(
+      Position                 pos,
+      std::vector<bool> const& will_move,
+      std::vector<bool> const& will_eat) const {
         for(std::size_t i = 0; i < snakes_.size(); ++i) {
-            auto const& body = snakes_[i].body;
+            auto const& body = snakes_.at(i).body;
 
             if(body.empty()) { continue; }
 
@@ -201,38 +269,20 @@ struct Game {
 
             // Der Schwanz der bewegten Schlange verschwindet
             // im gleichen Tick, sofern kein Futter gefressen wird.
-            if(i == moving_player && pos != food_) { --end; }
+            if(will_move[i] && !will_eat[i]) { --end; }
 
             if(std::find(body.begin(), end, pos) != end) { return true; }
         }
 
         return false;
     }
+
     bool eats_food(Position pos) const { return pos == food_; }
 
     bool occupied(Position pos) const {
         return std::ranges::any_of(snakes_, [&](auto const& snake) {
             return std::ranges::find(snake.body, pos) != snake.body.end();
         });
-    }
-
-    bool hits_body_after_move(Position pos, std::vector<bool> const& will_eat) const {
-        for(std::size_t i = 0; i < snakes_.size(); ++i) {
-            auto const& snake = snakes_[i];
-
-            if(!snake.alive || snake.body.empty()) { continue; }
-
-            std::size_t body_size = snake.body.size();
-
-            // Schwanz verschwindet in diesem Tick.
-            if(!will_eat[i] && body_size > 0) { --body_size; }
-
-            auto end = snake.body.begin() + static_cast<std::ptrdiff_t>(body_size);
-
-            if(std::find(snake.body.begin(), end, pos) != end) { return true; }
-        }
-
-        return false;
     }
 
     void place_food() {
@@ -266,6 +316,7 @@ struct Game {
         snake.next_direction = Direction::right;
         snake.score          = 0;
         snake.alive          = true;
+        snake.id             = snakes_.size();
     }
 
     void increase_game_speed() {
@@ -276,12 +327,7 @@ struct Game {
         if(speed_ < slowest_speed_) { speed_ += 1ms; }
     }
 
-    std::size_t player_count() const { return player_count_; }
-
-    void set_player_count(std::size_t count) {
-        player_count_ = std::clamp<std::size_t>(count, 1, 2);
-        reset();
-    }
+    std::size_t player_count() const { return snakes_.size(); }
 
     void change_theme();
 };

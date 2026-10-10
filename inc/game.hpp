@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <deque>
 #include <fmt/format.h>
+#include <ftxui/dom/elements.hpp>
 #include <iostream>
 #include <optional>
 #include <random>
@@ -34,6 +35,7 @@ struct Snake {
     int                   score{};
     bool                  alive{true};
     int                   id{0};
+    ftxui::Color          color{ftxui::Color::Green};
 };
 
 namespace Symbols {
@@ -45,10 +47,17 @@ namespace Symbols {
 
 }   // namespace Symbols
 
+static constexpr std::array snake_colors{
+  ftxui::Color::Green,
+  ftxui::Color::Blue,
+  ftxui::Color::Yellow,
+  ftxui::Color::Red,
+  ftxui::Color::Magenta};
+
 struct Game {
     std::size_t        width_;
     std::size_t        height_;
-    std::size_t        max_player_count_{2};
+    std::size_t        max_player_count_{3};
     std::size_t        player_count_{0};
     std::vector<Snake> snakes_{};
 
@@ -92,8 +101,10 @@ struct Game {
     using SnakeRef = std::reference_wrapper<Snake>;
     std::optional<SnakeRef> add_snake() {
         if(snakes_.size() >= max_player_count_) { return std::nullopt; }
-        auto const& ref = std::ref(snakes_.emplace_back());
-        return ref;
+        auto const index = snakes_.size();
+        auto&      snake = snakes_.emplace_back();
+        snake.color      = snake_colors[index % snake_colors.size()];
+        return std::ref(snake);
     }
 
     bool remove_snake(Snake const& snake) {
@@ -328,6 +339,16 @@ struct Game {
     }
 
     std::size_t player_count() const { return snakes_.size(); }
+
+    std::vector<Position> occupied_positions() const {
+        std::vector<Position> positions;
+
+        for(auto const& snake : snakes_) {
+            positions.insert(positions.end(), snake.body.begin(), snake.body.end());
+        }
+
+        return positions;
+    }
 
     void change_theme();
 };

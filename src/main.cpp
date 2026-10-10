@@ -35,36 +35,23 @@ ftxui::Element make_board(snake::Game const& game) {
                 cells.push_back(ftxui::text(empty_cell) | ftxui::bgcolor(ftxui::Color::Red));
                 continue;
             }
+            bool occupied = false;
+            for(std::size_t i = 0; i < game.snakes_.size(); ++i) {
+                auto const& snake = game.snakes_.at(i);
+                auto const  it    = std::ranges::find(snake.body, pos);
 
-            auto const& body_1 = game.body(0);
-            auto const  it_1   = std::ranges::find(body_1, pos);
-
-            if(it_1 != body_1.end()) {
-                if(it_1 == body_1.begin()) {
-                    cells.push_back(ftxui::text(empty_cell) | ftxui::bgcolor(ftxui::Color::White));
-                } else {
-                    cells.push_back(ftxui::text(empty_cell) | ftxui::bgcolor(ftxui::Color::Green));
-                }
-
-                continue;
-            }
-            if(game.player_count() == 2) {
-                auto const& body_2 = game.body(1);
-                auto const  it_2   = std::ranges::find(body_2, pos);
-
-                if(it_2 != body_2.end()) {
-                    if(it_2 == body_2.begin()) {
+                if(it != snake.body.end()) {
+                    if(it == snake.body.begin()) {
                         cells.push_back(
                           ftxui::text(empty_cell) | ftxui::bgcolor(ftxui::Color::White));
                     } else {
-                        cells.push_back(
-                          ftxui::text(empty_cell) | ftxui::bgcolor(ftxui::Color::Blue));
+                        cells.push_back(ftxui::text(empty_cell) | ftxui::bgcolor(snake.color));
                     }
-
-                    continue;
+                    occupied = true;
+                    break;
                 }
             }
-
+            if(occupied) { continue; }
             cells.push_back(ftxui::text(empty_cell));
         }
 
@@ -99,6 +86,7 @@ int main() {
     std::optional<SnakeRef> snake1{game.add_snake()};
     std::string             debugText{"Init"};
     std::optional<SnakeRef> snake2{};
+    std::optional<SnakeRef> snake3{};
 
     auto renderer = ftxui::Renderer([&]() {
         auto board = make_board(game);
@@ -201,6 +189,8 @@ int main() {
                 snake2    = game.add_snake();
                 debugText = "Player 2";
                 game.init_snake(snake2.value());
+                snake3 = game.add_snake();
+                game.init_snake(snake3.value());
                 //snake1 = game.add_snake();
                 //snake2 = game.add_snake();
             }

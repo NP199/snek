@@ -1,21 +1,7 @@
-Some text for context etc.
+This is a small project for fun.
 
-First step si to create a window.
+The goal is to create some snake bots than can play against each other.
 
-It should specify the size. 
-Default should be size of an original Terminal size.
+For now there is a single player mode, where you can collect food and every time the game gets a little bit faster.
 
-Game Speed option: +/-
-
-Movement: wasd or arrow keys
-
-restart: R r 
-
-quit: Q q 
-
-color of item: C c 
-
-UI: Score | Controls | Game Mode | snake model
-
-
-game: random food spawn | speed | body | next move | Collison check 
+If you want to play snake in a terminal gui with ftxui, you can do it with this repo.

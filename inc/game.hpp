@@ -257,8 +257,6 @@ struct Game {
 
             auto end = body.end();
 
-            // Der Schwanz der bewegten Schlange verschwindet
-            // im gleichen Tick, sofern kein Futter gefressen wird.
             if(will_move[i] && !will_eat[i]) { --end; }
 
             if(std::find(body.begin(), end, pos) != end) { return true; }

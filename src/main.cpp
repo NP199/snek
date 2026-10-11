@@ -86,7 +86,7 @@ int main() {
     std::optional<SnakeRef> snake1{game.add_snake()};
     std::string             debugText{"Init"};
     std::optional<SnakeRef> snake2{};
-    std::optional<SnakeRef> snake3{};
+    //std::optional<SnakeRef> snake3{};
 
     auto renderer = ftxui::Renderer([&]() {
         auto board = make_board(game);
@@ -189,10 +189,8 @@ int main() {
                 snake2    = game.add_snake();
                 debugText = "Player 2";
                 game.init_snake(snake2.value());
-                snake3 = game.add_snake();
-                game.init_snake(snake3.value());
-                //snake1 = game.add_snake();
-                //snake2 = game.add_snake();
+                //snake3 = game.add_snake();
+                //game.init_snake(snake3.value());
             }
             paused = true;
 

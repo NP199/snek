@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <deque>
@@ -55,11 +56,12 @@ static constexpr std::array snake_colors{
   ftxui::Color::Magenta};
 
 struct Game {
-    std::size_t        width_;
-    std::size_t        height_;
-    std::size_t        max_player_count_{3};
-    std::size_t        player_count_{0};
-    std::vector<Snake> snakes_{};
+    std::size_t                width_;
+    std::size_t                height_;
+    std::size_t                max_player_count_{3};
+    std::size_t                player_count_{0};
+    std::vector<Snake>         snakes_{};
+    std::atomic<std::uint64_t> tick_{0};
 
     Position food_{};
 
@@ -76,19 +78,6 @@ struct Game {
       , random_engine_(std::random_device{}()) {
         snakes_.reserve(max_player_count_);
     }
-
-    /* reset -> snakes werden anahnd des vorher festgegten player_count_ initialisert
-     * init() soll neue schalgnen anhand des max_player_count_ erlauben.
-     * Es macht kein Sinn erst alle Schalngen zu initialiseiren und dann zu schauen welche
-     * gebraucht werden.
-     *
-     * Es ergibt nur Sinn aufrufen zu lassen, dass man eine Schlange initialiseren möchte.
-     * Jeder Spieler, fragt das Spiel über init_snake nach einer neuen Schlange und diese wird
-     * anhand eienr ID in den vector gepackt.
-     * Das Spiel schaut bei reset wie viele Schlangen es gibt und baut das Feld.
-     * In Init soll immer die Position neu bestimmt werden keine neuen schlangen angeelgt.
-     * Es muss eine Add player funtkino geben, die speicheradresse auf eine schlange returned.
-     */
 
     void reset() {
         //snakes_.assign(player_count_, Snake{});
@@ -145,7 +134,6 @@ struct Game {
         std::vector<bool>     will_eat(count, false);
         std::vector<bool>     survives(count, false);
 
-        // 1. Bewegungen vorberechnen
         for(std::size_t i = 0; i < count; ++i) {
             auto& snake = snakes_.at(i);
 
@@ -168,12 +156,7 @@ struct Game {
             survives[i]       = true;
         }
 
-        // 2. Kollisionen bestimmen
-        // Wiederholen, bis keine weiteren Schlangen sterben.
-        // Dadurch wird kein Schwanz einer gestorbenen
-        // Schlange fälschlich als frei betrachtet.
         bool changed;
-
         do {
             changed = false;
 
@@ -189,7 +172,6 @@ struct Game {
                 }
             }
 
-            // Kopf-an-Kopf-Kollisionen
             for(std::size_t i = 0; i < count; ++i) {
                 for(std::size_t j = i + 1; j < count; ++j) {
                     if(!survives[i] || !survives[j]) { continue; }
@@ -205,7 +187,6 @@ struct Game {
             }
         } while(changed);
 
-        // 3. Bewegungen ausführen
         bool food_eaten = false;
 
         for(std::size_t i = 0; i < count; ++i) {
@@ -228,16 +209,14 @@ struct Game {
             }
         }
 
-        // 4. Futter und Geschwindigkeit
         if(food_eaten) {
             place_food();
             increase_game_speed();
         }
-
-        // 5. Spielende
         game_over_ = std::ranges::none_of(snakes_, [](Snake const& snake) {
             return snake.alive && !snake.body.empty();
         });
+        tick_.fetch_add(1, std::memory_order_release); // Signal update complete
     }
 
     std::vector<Position> const& body(std::size_t player) const { return snakes_.at(player).body; }
@@ -349,6 +328,8 @@ struct Game {
 
         return positions;
     }
+
+    std::uint64_t tick() const noexcept { return tick_.load(std::memory_order_acquire); }
 
     void change_theme();
 };

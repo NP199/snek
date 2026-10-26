@@ -62,6 +62,7 @@ struct Game {
     std::size_t                player_count_{0};
     std::vector<Snake>         snakes_{};
     std::atomic<std::uint64_t> tick_{0};
+    int                        highscore_{};
 
     Position food_{};
 
@@ -125,6 +126,7 @@ struct Game {
     void set_direction(Direction direction) { set_direction(0, direction); }
 
     void update() {
+        check_for_highscore();
         if(game_over_ || snakes_.empty()) { return; }
 
         auto const count = snakes_.size();
@@ -216,7 +218,7 @@ struct Game {
         game_over_ = std::ranges::none_of(snakes_, [](Snake const& snake) {
             return snake.alive && !snake.body.empty();
         });
-        tick_.fetch_add(1, std::memory_order_release); // Signal update complete
+        tick_.fetch_add(1, std::memory_order_release);   // Signal update complete
     }
 
     std::vector<Position> const& body(std::size_t player) const { return snakes_.at(player).body; }
@@ -330,6 +332,10 @@ struct Game {
     std::uint64_t tick() const noexcept { return tick_.load(std::memory_order_acquire); }
 
     void change_theme();
+
+    void check_for_highscore() {
+        for(auto& snake : snakes_) { highscore_ = std::max(snake.score, highscore_); }
+    }
 };
 
 }   // namespace snake

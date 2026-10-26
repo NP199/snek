@@ -120,7 +120,11 @@ int main() {
           ftxui::text("Snek") | ftxui::bold | ftxui::center,
 
           ftxui::hbox(
-            {ftxui::text("Score: ") | ftxui::bold, ftxui::text(std::to_string(game.score()))})
+            {ftxui::text("Score: ") | ftxui::bold,
+             ftxui::text(std::to_string(game.score())),
+             ftxui::text(" | "),
+             ftxui::text("Highscore: ") | ftxui::bold,
+             ftxui::text(std::to_string(game.highscore_))})
             | ftxui::center,
 
           board | ftxui::center,

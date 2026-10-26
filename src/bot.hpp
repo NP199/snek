@@ -11,13 +11,10 @@ struct SnakeBot {
     snake::Game&                              game_;
     bool                                      running_{true};
     using SnakeRef = std::reference_wrapper<snake::Snake>;
-    std::optional<SnakeRef> bot_snake_{};
+    std::size_t snake_id_{};
 
-    SnakeBot(snake::Game& game) : game_{game} { bot_snake_ = game_.add_snake(); }
-    ~SnakeBot() {
-        if(bot_snake_.has_value()) { game_.remove_snake(bot_snake_->get()); }
-        bot_snake_.reset();
-    }
+    SnakeBot(snake::Game& game, std::size_t id) : game_{game}, snake_id_{id} {}
+    ~SnakeBot() {}
 
     void updateMap() {
         std::vector<snake::Position> occupiedPos = game_.occupied_positions();
@@ -37,19 +34,17 @@ struct SnakeBot {
     }
 
     void setNextMove() {
-        if(bot_snake_.has_value()) {
-            auto const& temp = bot_snake_->get();
-            game_.set_direction(1, snake::Direction::up);
-            if(temp.direction == snake::Direction::left) {
-                game_.set_direction(1, snake::Direction::down);
-            } else if(temp.direction == snake::Direction::right) {
-                //temp.direction = snake::Direction::up;
-                game_.set_direction(1, snake::Direction::up);
-            } else if(temp.direction == snake::Direction::up) {
-                game_.set_direction(1, snake::Direction::left);
-            } else if(temp.direction == snake::Direction::down) {
-                game_.set_direction(1, snake::Direction::right);
-            }
+        auto const& temp = game_.snakes_.at(snake_id_);
+        //game_.set_direction(snake_id_, snake::Direction::up);
+        if(temp.direction == snake::Direction::left) {
+            game_.set_direction(snake_id_, snake::Direction::down);
+        } else if(temp.direction == snake::Direction::right) {
+            //temp.direction = snake::Direction::up;
+            game_.set_direction(snake_id_, snake::Direction::up);
+        } else if(temp.direction == snake::Direction::up) {
+            game_.set_direction(snake_id_, snake::Direction::left);
+        } else if(temp.direction == snake::Direction::down) {
+            game_.set_direction(snake_id_, snake::Direction::right);
         }
     }
 

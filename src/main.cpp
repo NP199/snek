@@ -1,4 +1,5 @@
 #include "bot.hpp"
+#include "bot_worker.hpp"
 #include "game.hpp"
 
 #include <algorithm>
@@ -8,6 +9,8 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/ftxui.hpp>
 #include <ftxui/screen/string.hpp>
+#include <memory>
+#include <mutex>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -76,14 +79,15 @@ ftxui::Element make_board(snake::Game const& game) {
 int main() {
     constexpr std::size_t kWidth{15};
     constexpr std::size_t kHeight{15};
+    constexpr std::size_t kBotCount{1};
+    std::mutex            game_mutex;
 
-
-    snake::Game      game{kWidth, kHeight};
+    snake::Game               game{kWidth, kHeight};
     std::atomic<std::int64_t> tick_ms{game.speed_.count()};
-    auto             screen = ftxui::ScreenInteractive::TerminalOutput();
-    std::atomic_bool running{true};
-    bool             paused{true};
-    bool             mode{true};
+    auto                      screen = ftxui::ScreenInteractive::TerminalOutput();
+    std::atomic_bool          running{true};
+    bool                      paused{true};
+    bool                      mode{false};
     using SnakeRef = std::reference_wrapper<snake::Snake>;
     std::optional<SnakeRef> snake1{game.add_snake()};
     std::string             debugText{"Init"};
@@ -91,7 +95,14 @@ int main() {
     //std::optional<SnakeRef> snake2{};
     //std::optional<SnakeRef> snake3{};
 
+    std::vector<std::size_t>   bot_ids;
+    std::unique_ptr<BotWorker> bot_worker;
+
+    std::uint64_t bot_version{0};
+
     auto renderer = ftxui::Renderer([&]() {
+        std::lock_guard lock(game_mutex);
+
         auto board = make_board(game);
 
         ftxui::Element footer;
@@ -102,7 +113,8 @@ int main() {
         } else {
             footer = ftxui::vbox({
               ftxui::text(
-                mode ? "Mode: 2 Players | M = 1 Player" : "Mode: 1 Player | M = 2 Players")
+                mode ? fmt::format("Mode: {} Players | M = 1 Player", kBotCount + 1)
+                     : "Mode: 1 Player | M = Bots")
                 | ftxui::bold | ftxui::center,
               ftxui::text("WASD/Arrow Keys = movement | Q = Quit") | ftxui::dim | ftxui::center,
               ftxui::hbox(
@@ -190,13 +202,34 @@ int main() {
             return true;
         }
         if(event == ftxui::Event::Character('M') || event == ftxui::Event::Character('m')) {
+            /*
             mode = !mode;
             if(mode) {
                 if(snake1.has_value()) { debugText = "Player 1"; }
-                bot.reset();
+                //bot.reset();
                 //if(snake2.has_value()) { game.remove_snake(snake2->get()); }
+                bot_worker.reset();
+                for(std::size_t i = 0; i < bot_ids.size(); ++i) {
+                    game.remove_snake(game.snakes_.back());
+                }
+                bot_ids.clear();
+                game.reset();
             } else {
-                bot.emplace(game);
+                // Bots anlegen
+                for(std::size_t i = 0; i < kBotCount; ++i) {
+                    auto id = game.snakes_.size();
+                    game.add_snake();
+                    bot_ids.push_back(id);
+                }
+
+                game.reset();
+
+                bot_worker = std::make_unique<BotWorker>(bot_ids);
+
+                mode = true;
+                dispatch_bots();
+
+                //bot.emplace(game);
                 //snake2    = game.add_snake();
                 //debugText = "Player 2";
                 //game.init_snake(snake2.value());
@@ -206,12 +239,71 @@ int main() {
             paused = true;
 
             return true;
-        }
+            */
+            paused = true;
 
-        if(event == ftxui::Event::Custom) {
-            if(bot.has_value()) { bot->run(); }
-            if(!paused) game.update();
+            if(!mode) {
+                // Bot-Modus aktivieren
+                for(std::size_t i = 0; i < kBotCount; ++i) {
+                    auto id = game.snakes_.size();
+
+                    game.add_snake();
+                    bot_ids.push_back(id);
+                }
+
+                game.reset();
+
+                bot_worker = std::make_unique<BotWorker>(game, kBotCount, game_mutex);
+
+                mode      = true;
+                debugText = "Bots aktiviert";
+
+            } else {
+                // Bot-Modus deaktivieren
+                bot_worker.reset();
+
+                for(std::size_t i = 0; i < bot_ids.size(); ++i) {
+                    game.remove_snake(game.snakes_.back());
+                }
+
+                bot_ids.clear();
+
+                game.reset();
+
+                mode      = false;
+                debugText = "Einzelspieler";
+            }
+
             return true;
+        }
+        if(event == ftxui::Event::Custom) {
+            if(paused || game.game_over()) { return true; }
+
+            {
+                std::lock_guard lock(game_mutex);
+                game.update();
+            }
+
+            if(bot_worker) { bot_worker->trigger(); }
+
+            return true;
+            /*
+            if(paused) return true;
+            //if(bot.has_value()) { bot->run(); }
+            if(bot_worker) {
+                auto result = bot_worker->take_result();
+
+                if(result && result->version == bot_version) {
+                    for(auto const& move : result->moves) {
+                        game.set_direction(move.snake_id, move.direction);
+                    }
+                }
+            }
+            game.update();
+            if(bot_worker && !game.game_over()) { dispatch_bots(); }
+            return true;
+        }
+        */
         }
         return false;
     });

@@ -77,7 +77,9 @@ int main() {
     constexpr std::size_t kWidth{15};
     constexpr std::size_t kHeight{15};
 
+
     snake::Game      game{kWidth, kHeight};
+    std::atomic<std::int64_t> tick_ms{game.speed_.count()};
     auto             screen = ftxui::ScreenInteractive::TerminalOutput();
     std::atomic_bool running{true};
     bool             paused{true};
@@ -85,7 +87,8 @@ int main() {
     using SnakeRef = std::reference_wrapper<snake::Snake>;
     std::optional<SnakeRef> snake1{game.add_snake()};
     std::string             debugText{"Init"};
-    std::optional<SnakeRef> snake2{};
+    std::optional<SnakeBot> bot;
+    //std::optional<SnakeRef> snake2{};
     //std::optional<SnakeRef> snake3{};
 
     auto renderer = ftxui::Renderer([&]() {
@@ -143,28 +146,28 @@ int main() {
           event == ftxui::Event::Character('W') || event == ftxui::Event::Character('w')
           || event == ftxui::Event::ArrowUp)
         {
-            game.set_direction(snake::Direction::up);
+            game.set_direction(0, snake::Direction::up);
             return true;
         }
         if(
           event == ftxui::Event::Character('S') || event == ftxui::Event::Character('s')
           || event == ftxui::Event::ArrowDown)
         {
-            game.set_direction(snake::Direction::down);
+            game.set_direction(0, snake::Direction::down);
             return true;
         }
         if(
           event == ftxui::Event::Character('A') || event == ftxui::Event::Character('a')
           || event == ftxui::Event::ArrowLeft)
         {
-            game.set_direction(snake::Direction::left);
+            game.set_direction(0, snake::Direction::left);
             return true;
         }
         if(
           event == ftxui::Event::Character('D') || event == ftxui::Event::Character('d')
           || event == ftxui::Event::ArrowRight)
         {
-            game.set_direction(snake::Direction::right);
+            game.set_direction(0, snake::Direction::right);
             return true;
         }
         if(event == ftxui::Event::Character('R') || event == ftxui::Event::Character('r')) {
@@ -174,10 +177,12 @@ int main() {
         }
         if(event == ftxui::Event::PageUp) {
             game.increase_game_speed();
+            tick_ms.store(game.speed_.count());
             return true;
         }
         if(event == ftxui::Event::PageDown) {
             game.decrease_game_speed();
+            tick_ms.store(game.speed_.count());
             return true;
         }
         if(event == ftxui::Event::Character(' ')) {
@@ -188,11 +193,13 @@ int main() {
             mode = !mode;
             if(mode) {
                 if(snake1.has_value()) { debugText = "Player 1"; }
-                if(snake2.has_value()) { game.remove_snake(snake2->get()); }
+                bot.reset();
+                //if(snake2.has_value()) { game.remove_snake(snake2->get()); }
             } else {
-                snake2    = game.add_snake();
-                debugText = "Player 2";
-                game.init_snake(snake2.value());
+                bot.emplace(game);
+                //snake2    = game.add_snake();
+                //debugText = "Player 2";
+                //game.init_snake(snake2.value());
                 //snake3 = game.add_snake();
                 //game.init_snake(snake3.value());
             }
@@ -202,6 +209,7 @@ int main() {
         }
 
         if(event == ftxui::Event::Custom) {
+            if(bot.has_value()) { bot->run(); }
             if(!paused) game.update();
             return true;
         }
@@ -212,7 +220,7 @@ int main() {
 
     std::jthread ticker([&](std::stop_token stop_token) {
         while(!stop_token.stop_requested() && running.load()) {
-            std::this_thread::sleep_for(game.speed_);
+            std::this_thread::sleep_for(std::chrono::milliseconds{tick_ms.load()});
             if(!stop_token.stop_requested() && running.load()) {
                 screen.PostEvent(ftxui::Event::Custom);
             }

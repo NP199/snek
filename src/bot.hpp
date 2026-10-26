@@ -1,19 +1,23 @@
 #pragma once
 
 #include "game.hpp"
-#include <vector>
+
 #include <fmt/format.h>
+#include <optional>
+#include <vector>
 
-struct snake_bot {
-    std::vector<snake::Snake>                 bot_;
+struct SnakeBot {
     std::vector<std::vector<snake::Position>> gameMap_{};
-    snake::Game const&                        game_;
-    bool running_ {false};
+    snake::Game&                              game_;
+    bool                                      running_{true};
+    using SnakeRef = std::reference_wrapper<snake::Snake>;
+    std::optional<SnakeRef> bot_snake_{};
 
-    snake_bot(std::vector<snake::Snake> const& bot, snake::Game const& game)
-      : bot_{bot}
-      , game_{game} {}
-    ~snake_bot() { bot_.clear(); }
+    SnakeBot(snake::Game& game) : game_{game} { bot_snake_ = game_.add_snake(); }
+    ~SnakeBot() {
+        if(bot_snake_.has_value()) { game_.remove_snake(bot_snake_->get()); }
+        bot_snake_.reset();
+    }
 
     void updateMap() {
         std::vector<snake::Position> occupiedPos = game_.occupied_positions();
@@ -32,25 +36,42 @@ struct snake_bot {
         // andere schlange angreifbar?
     }
 
-    void setNextMove() {}
+    void setNextMove() {
+        if(bot_snake_.has_value()) {
+            auto const& temp = bot_snake_->get();
+            game_.set_direction(1, snake::Direction::up);
+            if(temp.direction == snake::Direction::left) {
+                game_.set_direction(1, snake::Direction::down);
+            } else if(temp.direction == snake::Direction::right) {
+                //temp.direction = snake::Direction::up;
+                game_.set_direction(1, snake::Direction::up);
+            } else if(temp.direction == snake::Direction::up) {
+                game_.set_direction(1, snake::Direction::left);
+            } else if(temp.direction == snake::Direction::down) {
+                game_.set_direction(1, snake::Direction::right);
+            }
+        }
+    }
 
     void updateSnakePosition() {}
 
-    void run(){
-        auto lastTick = game_.tick();
+    void run() {
+        auto lastTick     = game_.tick();
+        auto nextMoveTick = lastTick;
 
-        while(running_){
+        //game_.set_direction(1, snake::Direction::up);
+        setNextMove();
+        /*while(running_) {
             auto currentTick = game_.tick();
 
-            if(currentTick == lastTick){
-                continue;
-            }
+            if(currentTick == lastTick) { continue; }
             lastTick = currentTick;
             updateMap();
             calculateNextMove();
-            setNextMove();
-        }
-
-
+            if(currentTick == nextMoveTick) {
+                setNextMove();
+                nextMoveTick += 2;
+            }
+        }*/
     }
 };
